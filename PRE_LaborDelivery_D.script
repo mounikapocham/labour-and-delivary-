@@ -1,0 +1,128 @@
+﻿(*********************************************************************************
+Script Name:      PRE_LaborDelivery
+Purpose:          Processes a spreadsheet and Arrives and Admits the patients listed
+Author:           Megan Webber
+Developed:        March 23, 2021
+App/Team:         Prelude
+Description:      Processes a spreadsheet and arrives and registers the patients listed.
+                  Can be used as a standalone script to admit a quantity of 
+                  patients or to test Prelude workflows.
+Called by:        
+Assumes:          Spreadsheet PRE_LaborDelivery.xlsx in Resources folder with first
+                  row is header (used as . reference fields.  Second row is 
+                  defaults (to be loaded in any empty cells).  Currently requires
+                  Room and Bed in spreadsheet.  Assumes sex of patient will 
+                  not conflict with other bed if in use
+Parameters:       None
+Returns:          No return value, but this routine writes fields into the table.
+                                                          
+Change Log:   
+Date              Developer          Description  
+---------------   --------------     ------------------------------------------
+
+*********************************************************************************)
+Params EPMlist
+
+log the params
+
+xLogScriptMsg "BEGIN",My Name 
+global EPMrun, ummspw, recordct
+global patient-- set up only so that the called routine can write data to the spreadsheet
+
+
+If length(EPMlist)=0 or (EPMlist="EPMlist") then 
+	//If length(EPMlist)=0 then 
+	// This is being run from functional and we have developer defaults
+	set ummsenv = DevEnv -- suite variable for control outside routine
+	set ummsfiletorun = DevFileToRunPRE -- suite variable for control outs routine	
+	set EPMrun=false
+Else
+	// This is being run from manager, need to parse list
+	put item 1 of EPMlist into ummsenv
+	put item 2 of EPMlist into ummsfiletorun
+	log "Provided Parameters:"&&EPMlist
+	wait 15 --calling routines from Manager doesn't always have the SUT ready...trying a wait here
+	set EPMrun=true
+End if
+
+log "EPMlist"&&EPMlist
+log "the umms info - "&ummsenv&"."&ummsfiletorun
+
+set ummspw = value("EPpassword"&ummsenv)
+set ummspath = ResourcePath(ummsfiletorun)
+set myDB to {file:ummspath, type:"excel", writeable:"Yes"}
+log myDB -- temp
+set patients to table("Sheet1") of myDB
+put the number of records in myDB into recordct
+log recordct
+log "Patients"&&the records of Patients
+//put the records of myDB into providers
+
+xInitializeEPSettings -- sets the timings
+
+//call in load default
+xLoadDefaults patients
+
+log "MyDB"&&myDB
+
+If xCitrixLogOn() then 
+	xEpicOpenHyperspace ummsenv
+Else
+	xLogError "Failed Citrix LogOn"
+End If
+
+//Call each record one at a time and perform a scripted activity. 
+
+Repeat with each item patient of the records of patients by reference 
+	If the repeatIndex = 1 then  --this skips the default row in the spreadsheet
+		next repeat
+	End If
+	
+	//Login to Epic as ADTPA
+	xEpicLogin patient.unit, UserADTPA, ummspw 
+	
+	//Process the admission
+	PRE_LaborDelivery
+	
+	//Register a Newborn
+	PRE_LDNewBornRegistration
+	
+	//Discharge the patient & baby (if applicable)
+	PRE_LDDischarge
+	
+end repeat 
+
+//Logout of Hyperspace
+xHyperspaceClose
+
+//Log off Citrix
+xCitrixLogOff
+
+xLogScriptMsg "END",My Name
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
